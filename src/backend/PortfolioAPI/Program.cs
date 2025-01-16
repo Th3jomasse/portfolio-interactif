@@ -1,51 +1,55 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers(); // Pour supporter les contrôleurs API
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddOpenApi();
+// Configuration JWT
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key not found"))),
+            ValidateIssuer = false,
+            ValidateAudience = false
+        };
+    });
 
-// Ajouter CORS
+builder.Services.AddAuthorization();
+
+// Ajout des services
+builder.Services.AddSingleton<IAuthService, AuthService>();
+
+// ... reste de la configuration
+
+var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// Configuration CORS pour le frontend
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(builder =>
-    {
-        builder.AllowAnyOrigin()
+    options.AddPolicy("AllowFrontend",
+        builder => builder
+            .WithOrigins("http://localhost:3000")
             .AllowAnyMethod()
-            .AllowAnyHeader();
-    });
+            .AllowAnyHeader());
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
+app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
-app.UseCors();
+app.UseAuthorization();
 app.MapControllers();
 
-// Gardons la route weatherforecast pour tester
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast");
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
